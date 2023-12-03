@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Winning the American Express Campus SuperBowl Challenge: My Journey</title>
+    <link rel="stylesheet" type="text/css" href="stylesheet.css">
+    <link rel="icon" type="image/png" href="images/seal_icon.png">
+</head>
+<body>
+    <header class="blog-header">
+        <h1>Winning the American Express Campus SuperBowl Challenge: My Journey</h1>
+        <p class="posted-date">Posted on [29 October 2023]</p>
+    </header>
+
+    <main class="blog-content">
+        <article>
+            <h2 class="Subheading">Introduction</h2>
+            <p> 
+                I recently participated in the American Express Campus Super Bowl challenge, a nation-wide three month long competition for students who are into analytics and data science, more details can be found <a href="https://unstop.com/competition/the-american-express-campus-super-bowl-challenge-2023-717145" target="_blank">here.</a>
+                <br><br>
+                The challenge was all about the Merchant Recommendation system for American Express. It's like a friend who suggests new places to shop(successful recommendation is when a customer shops at a recommended place within 30 days).
+                But here's the twist - customers can also find and shop at new places on their own, without any recommendations. So, our task was to find those places for each customer that would get the most 'Incremental Activations' : the places that a customer wouldn't have found if not recommended, which means fewer places found organically.
+                <br><br>
+                Having previously never worked on recommendation systems, this was a pretty interesting problem and I was super excited to take it on. Stick around as I share more about this in the next sections of this blog.
+            </p>
+            <h2 class="Subheading">Overview</h2>
+            <p>
+                The entire process consisted of three rounds:
+                <br><br>
+                 The first round was a qualifier round, where we had to do the major work : building the end-to-end model pipeline. Given a dataset of 462k customers with over 12 million total entries. Rank the top 10 merchants for each customer, to maximise the incremental activation rate. The top 50 teams were selected for the second round.
+                 <br><br>
+                 The second round was a additional round, where we had to use our model pipeline to make prediction on a new dataset, so that the model's robustness could be checked over varying data. The top 10 teams were selected for the final round.
+                 <br><br>
+                 The final round was a presentation round, where we had to present our approach and results to a panel of judges from American Express
+            </p>
+            <h2 class="Subheading">Model Building</h2>
+            <p>
+                Building the model was indeed the most crucial part of our journey. The unique aspect of this challenge was to exclude organic recommendations and focus on maximizing the incremental activation rate.
+                <br><br>
+                Our approach was divided into three major components:
+                <br><br>
+                <!-- bolt something in html -->
+                <b>1. Feature Engineering and Selection Process</b>
+                <br><br>
+                We started by creating and selecting features that would provide the most valuable insights for our model. Here are some of the key features we engineered :
+                <ol>
+                    <li><b>Login Frequency</b>: This represents how frequently a customer logs in. It gave us an idea of the customer’s engagement level.</li>
+                    <li><b>Click-to-Spend Ratio</b>: This measures the efficiency of clicks in driving merchant spending. It helped us understand the customer’s spending behavior.</li>
+                    <li><b>Transaction Conversion Rate</b>: This reflects the strength of a customer’s intent to purchase, based on logins per transaction. It was useful in gauging the customer’s purchasing power.</li>
+                    <li><b>Missing Data Indicator</b>: This indicates the percentage of missing data for a data point. It was crucial in handling missing data during the model building process.</li>
+                </ol>
+                In the process of feature selection, we employed a technique known as Recursive Feature Addition. This approach begins with an initially empty list and progressively adds features based on a preliminary importance score, which, in our case, was derived from XGBoost's feature importance, and after every addition, the evaluation is done based on the 'incremental activation rate'. This continues until it reaches a point, often referred to as the 'elbow,' where there is minimal gain in information. This 'elbow' effectively indicates the optimal number of features required for training our model. The picture below shows the process of feature selection.
+                <img src="blog1/fea_select.png" alt="Image description" style="width: 775px; height: 195px; display: block; margin: auto;">
+                On employing the above-mentioned technique, we found that the optimal number of features was 80. The picture below shows the plot of 'incremental activation rate' vs the 'number of features', consisting of all the engineered features as well as the original features.
+                <img src="blog1/fea_select2.png" alt="Image description" style="width: 500px; height: 250px; display: block; margin: auto;">
+                <br><br>
+                <b>2. Sampling Technique</b>
+                <br><br>
+                We divide the customer base into 2 cateogories, based on their spending potential so that the model, can understand the dynamics of the customer base better. The sampling was done in 2 ways:
+                <!-- do this in item -->
+                <ol>
+                    <li><b>Base sampling</b>: Remove all customers who have not been recommended nor interacted across the entire dataset even once (Non - interacting Customers)</li>
+                    <li><b>Custom 2 cateogory sampling</b>: Removing the Customers whose Average Activation is less than (1/26)</li>
+                    Average Activation of a Customer = Total Activations of customer / Total Merchant Interaction of Customer
+</li>
+                </ol>
+                Now, why the value 1/26?
+                This is because, The average number of merchants Interacted by a Customer is 26, and If the customer is not even getting activated once, out of the 26 interactions, then that customer is put into one cateogory(less active), and the rest of the customers are put into the other category(more active).
+                <br><br>
+                <b>3. Model development:</b>
+                <br><br>
+                After comprehensively trying out various approaches ranging from classification models for 4 different classes of interaction to regression models using transformed outcome - our final approach was a custom two-model dependent uplift modelling. 
+                <br><br>
+                Uplift modelling is a technique that predicts the incremental impact of a treatment (such as a direct marketing action) on an individual’s behaviour. It is a powerful tool for marketers because it allows them to identify the customers who are most likely to respond positively to a marketing action.
+                <br><br>
+                Our approach was derived from the <a href="https://www.uplift-modeling.com/en/latest/user_guide/models/two_models.html#two-dependent-models" target="_blank">scikit-uplift's documentation</a>, it is based on the classifier chain method - originally developed for multi-class classification problems. The idea is that if there are  different labels, you can build  different classifiers, each of which solves the problem of binary classification and in the learning process, each subsequent classifier uses the predictions of the previous ones as additional features. This method uses the same idea to solve the problem of uplift modeling in two stages.
+                <br><br>
+                We prepared a preliminary model, where we trained two different classification models, for control and treatment group, where the score from the control model was appended to the features in treatment model, as discussed earlier, the uplift score was the difference between the probabilities of the two classification models, the model development process can be understood through the following diagram:
+                <br><br><img src="blog1/model1.png" alt="Image description" style="width: 800px; height:400px; display: block; margin: auto;">
+                <br><br>
+                After the preliminary model was developed, we incoporated our sampling techniques to improve the model performance, finally instead of taking the difference between the dependent models, we appended all the final values from the models to the second step of the model : where a regression model was fit on the transformed outcome to calculate the incremental activation rate(uplift value).
+                The process of model building can be very well understood through the following diagram:
+                <br><br><img src="blog1/model2.png" alt="Image description" style="width: 800px; height:400px; display: block; margin: auto;">
+                <b>4. Summary of the model:</b>
+                <br><br>
+                The entire process of the model can be understood through the following diagram:
+                <br><br><img src="blog1/summary.png" alt="Image description" style="width: 800px; height:400px; display: block; margin: auto;">
+                
+                <h2 class="Subheading">Conclusion</h2>
+                After going through 3 months long process, understanding uplift-modelling from ground up, trying, testing, failing, and finally presenting our work to the judges, we were declared the second-winners of the American Express Campus SuperBowl Challenge.
+                <br><br>
+                They also called us to their Banglore office for a day, where we got to interact with the team and present our work to some of the senior leaders from the AmEx New-York office. It was a great experience and I am grateful to American Express for giving me this opportunity, and for the prize : Apple Ipad.
+                <br><br>
+                <div class="image-container">
+                    <img src="blog1/amex1.JPG" alt="Picture 1" class="inline-image"width="260">
+                    <img src="blog1/amex2.JPG" alt="Picture 2" class="inline-image"width="260">
+                    <img src="blog1/amex3.JPG" alt="Picture 3" class="inline-image"width="260">
+                </div>
+                Thank you for reading this blog, I hope you enjoyed it. If you have any questions or feedback, please feel free to reach out to me on LinkedIn.
+                
+            </p>
+        </article>
+    </main>
+
+    <footer class="blog-footer">
+        <p>© [2023] Vedant Zope. All rights reserved.</p>
+        <p><a href="index.html">Back to Home</a></p>
+    </footer>
+</body>
+</html>
